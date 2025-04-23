@@ -1,117 +1,48 @@
-/* -----------------------------------------------------------
--- th22x0
------------------------------------------------------------ */
-module th22x0 (
-input wire a,
-input wire b,
-output reg z
-); //th22 gate
+`timescale 1ns/1ps
+module tb;
 
-always @ (a or b) begin
-    if (a == 1'b1 && b == 1'b1)
-        z = 1'b1; // 127.85 ps delay
-    else if (a == 1'b0 && b == 1'b0)
-        z = 1'b0; // 193.9 ps delay
-    // Else: retain previous value (no change)
-    end
-endmodule
+  // ------------- DUT ports -------------
+  logic Ai0_rail1, Ai0_rail0, Ai1_rail1, Ai1_rail0, Ai2_rail1, Ai2_rail0;
+  logic Bi0_rail1, Bi0_rail0, Bi1_rail1, Bi1_rail0, Bi2_rail1, Bi2_rail0;
+  logic Ki, rst;
 
-/* --------------------------------------------------------------
--- thand0x0
------------------------------------------------------------ */
-module thand0x0 (
-    input wire a,
-    input wire b,
-    input wire c,
-    input wire d,
-    output reg z
-);
+  logic Po0_rail1, Po0_rail0, Po1_rail1, Po1_rail0, Po2_rail1, Po2_rail0;
+  logic Po3_rail1, Po3_rail0, Po4_rail1, Po4_rail0, Po5_rail1, Po5_rail0;
+  logic Ko;
 
-always @ (a or b or c or d) begin
-    if (~a & ~b & ~c & ~d)
-        
-    else if ((a & b) || (b & c) || (a & d))
-        
-    // Else: retain previous value (no change)
-    end
-endmodule
+  // ------------- DUT -------------------
+  NCL_MULT3 dut (.*);   // SystemVerilog .* shorthand (all names match)
 
-/* --------------------------------------------------------------
--- DUAL rail typedef
------------------------------------------------------------ */
-typedef struct packed {
-    logic rail1;
-    logic rail0;
-} dual_rail_logic;
-// Vector (array) of dual-rail logic
-typedef dual_rail_logic dual_rail_logic_vector[];
-/* --------------------------------------------------------------
--- NCL AND
------------------------------------------------------------ */
-module ncl_and0 (
-    input dual_rail_logic x,
-    input dual_rail_logic y,
-    output dual_rail_logic z
-);
-// THAND0 for z rail0
-thand0x0 g0 (
-    .a(x.rail0),
-    .b(y.rail0),
-    .c(x.rail1),
-    .d(y.rail1),
-    .z(z.rail0)
-);
-// TH22x0 for z rail1
-th22x0 g1 (
-    .a(x.rail1),
-    .b(y.rail1),
-    .z(z.rail1)
-);
-endmodule
-
-/* -----------------------------------------------------------
--- NCL AND TB
------------------------------------------------------------ */
-module ncl_and0_tb;
-// Import dual-rail type if using struct (comment out if using plain signals)
-typedef struct packed {
-    logic rail1;
-    logic rail0;
-} dual_rail_logic;
-// Inputs to the UUT
-reg [1:0] x, y;
-wire [1:0] z;
-// Instantiate the Unit Under Test (UUT)
-ncl_and0 uut (
-    .x(x),
-    .y(y),
-    .z(z)
-);
-// Helper task to apply dual-rail input
-task apply_dual_rail_input(input [1:0] x_val, input [1:0] y_val);
+  // helper to drive one DATA value then NULL spacer
+  task apply_DR_input(
+        input logic a1, a0,
+        input logic b1, b0);
     begin
-        x = 2'b00; // NULL phase
-        y = 2'b00;
-        #50; // NULL duration
-        x = x_val;
-        y = y_val;
-        #100; // hold valid input
-end
-endtask
-initial begin
-    $display("Starting NCL AND Testbench");
-    $monitor("Time: %0t | X = %b | Y = %b | Z = %b",
-    $time, x, y, z);
-    // Initialize inputs
-    x = 2'b00;
-    y = 2'b00;
-    // All combinations with NULL spacer
-    apply_dual_rail_input(2'b01, 2'b01); // X = 0, Y = 0
-    apply_dual_rail_input(2'b01, 2'b10); // X = 0, Y = 1
-    apply_dual_rail_input(2'b10, 2'b01); // X = 1, Y = 0
-    apply_dual_rail_input(2'b10, 2'b10); // X = 1, Y = 1
-    #100;
-    $display("Simulation complete.");
+      {Ai0_rail1,Ai0_rail0,Bi0_rail1,Bi0_rail0} = 4'b0000;  // NULL
+      #50;
+      {Ai0_rail1,Ai0_rail0} = {a1,a0};
+      {Bi0_rail1,Bi0_rail0} = {b1,b0};
+      #100;                                  // hold DATA
+    end
+  endtask
+
+  // ------------- stimulus --------------
+  initial begin
+    rst = 1; Ki = 1'b1;     // reset to NULL
+    #20  rst = 0;
+
+    $display("time  Ai  Bi   | product");
+    $monitor("%4t  %b%b  %b%b | %b%b%b%b%b%b",
+             $time,
+             Ai0_rail1,Ai0_rail0,Bi0_rail1,Bi0_rail0,
+             Po5_rail1,Po4_rail1,Po3_rail1,Po2_rail1,Po1_rail1,Po0_rail1);
+
+    apply_DR_input(1'b0,1'b1, 1'b0,1'b1);  // 0 × 0
+    apply_DR_input(1'b0,1'b1, 1'b1,1'b0);  // 0 × 1
+    apply_DR_input(1'b1,1'b0, 1'b0,1'b1);  // 1 × 0
+    apply_DR_input(1'b1,1'b0, 1'b1,1'b0);  // 1 × 1
+
+    #200;
     $finish;
-end
+  end
 endmodule
