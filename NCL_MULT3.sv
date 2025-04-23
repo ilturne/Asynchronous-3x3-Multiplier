@@ -5,6 +5,8 @@
 // 1) Gate library and type definitions
 //----------------------------------------------------------------------------
 
+`timescale 1ns/1ps
+
 // Dual-rail type
 typedef struct packed {
   logic rail1;
@@ -415,8 +417,8 @@ module NCL_MULT3 (
   
   // handshaking between stages
   logic ko_in, ko_mid, ko_mid2;
-  logic ko0, ko1, ko2, ko3, ko4, ko5;
-  logic t1, t2;
+  dual_rail_logic ko0, ko1, ko2, ko3, ko4, ko5;
+  dual_rail_logic t1, t2;
 
    // stage 1: input regs
   ncl_reg_null rA0(.d(A[0]), .Ki(Ki),      .rst(rst), .q(A[0]), .Ko(ko_in));
@@ -443,10 +445,10 @@ module NCL_MULT3 (
   ncl_fa0 fa1 (.x(m[2]), .y(m[4]), .ci(ko0), .sum(t1), .co(ko1));
   ncl_ha0 ha2 (.x(t1), .y(m[6]), .sum(P[2]), .carry(ko2));
   ncl_fa0 fa2 (.x(ko2), .y(m[7]), .ci(ko1), .sum(t2), .co(ko3));
-  ncl_ha0 ha3 (.x(m[5]), .sum(t2), .sum(p[3]), .carry(ko4));
+  ncl_ha0 ha3 (.x(m[5]), .y(t2), .sum(P[3]), .carry(ko4));
   ncl_ha0 fa3 (.x(m[8]), .y(ko3), .sum(P[4]), .carry(ko5));
   assign P[0] = m[0];
-  assign P[5] = '{ ko5 , ~ko5 }; 
+  assign P[5] = { ko5, ~ko5 };
 
     // stage 2 registers (pipeline stage 2 handshake chain)
   logic ko_stage2a, ko_stage2b, ko_stage2c, ko_stage2d, ko_stage2e, ko_stage2f;
