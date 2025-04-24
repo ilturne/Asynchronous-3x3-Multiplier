@@ -414,7 +414,8 @@ module NCL_MULT3 (
   // Internal dual-rail vectors for registration stages:
   dual_rail_logic [2:0] A, B;   // post-input registers
   dual_rail_logic [2:0] C, D;   // post-intermediate registers
-  dual_rail_logic [5:0] P;      // pre-output registers
+  dual_rail_logic [7:0] Po_pre; // Stage 2 registers
+    dual_rail_logic [5:0] P;      // Stage 3 registers
   
   // handshaking between stages
   logic ko_in, ko_mid, ko_mid2;
@@ -448,37 +449,37 @@ module NCL_MULT3 (
 
   // stage 2 registers (pipeline stage 2 handshake chain)
   logic ko_stage2a, ko_stage2b, ko_stage2c, ko_stage2d, ko_stage2e, ko_stage2f;
-  ncl_reg_null rP0(.d(m[0]), .Ki(ko_mid2),    .rst(rst), .q(m[0]), .Ko(ko_stage2a));
-  ncl_reg_null rP1(.d(P[1]), .Ki(ko_stage2a), .rst(rst), .q(P[1]), .Ko(ko_stage2b));
-  ncl_reg_null rP2(.d(P[2]), .Ki(ko_stage2b), .rst(rst), .q(P[2]), .Ko(ko_stage2c));
-  ncl_reg_null rP3(.d(c3), .Ki(ko_stage2c), .rst(rst), .q(P[3]), .Ko(ko_stage2d));
-  ncl_reg_null rP4(.d(P[4]), .Ki(ko_stage2d), .rst(rst), .q(P[4]), .Ko(ko_stage2e));
-  ncl_reg_null rP5(.d(P[5]), .Ki(ko_stage2e), .rst(rst), .q(P[5]), .Ko(ko_stage2f));
+  ncl_reg_null rP0(.d(m[0]), .Ki(ko_mid2),    .rst(rst), .q(Po_pre[0]), .Ko(ko_stage2a));
+  ncl_reg_null rP1(.d(P[1]), .Ki(ko_stage2a), .rst(rst), .q(Po_pre[1]), .Ko(ko_stage2b));
+  ncl_reg_null rP2(.d(P[2]), .Ki(ko_stage2b), .rst(rst), .q(Po_pre[2]), .Ko(ko_stage2c));
+  ncl_reg_null rP3(.d(c3), .Ki(ko_stage2c), .rst(rst), .q(Po_pre[3]), .Ko(ko_stage2d));
+  ncl_reg_null rP4(.d(c2), .Ki(ko_stage2d), .rst(rst), .q(Po_pre[4]), .Ko(ko_stage2e));
+  ncl_reg_null rP5(.d(m[7]), .Ki(ko_stage2e), .rst(rst), .q(Po_pre[5]), .Ko(ko_stage2f));
+  ncl_reg_null rP6(.d(m[5]), .Ki(ko_stage2f), .rst(rst), .q(Po_pre[6]), .Ko());
+  ncl_reg_null rP7(.d(m[8]), .Ki(ko_stage2f), .rst(rst), .q(Po_pre[7]), .Ko());
 
   ncl_fa0 fa2 (.x(c2), .y(m[7]), .ci(c3), .sum(t2), .co(c4));
   ncl_ha0 ha3 (.x(m[5]), .y(t2), .sum(P[3]), .carry(c5));
   ncl_ha0 fa3 (.x(m[8]), .y(c4), .sum(P[4]), .carry(c6));
   
-  assign P[0] = m[0];
-  assign P[5] = { ko5, ~ko5 };
-  
   // stage 3 output regs & completion tree
-  dual_rail_logic Q [0:5];
   logic ko_out0, ko_out1, ko_out2, ko_out3, ko_out4, ko_out5;
-  ncl_reg_null rQ0(.d(P[0]), .Ki(ko_stage2f), .rst(rst), .q(Q[0]), .Ko(ko_out0));
-  ncl_reg_null rQ1(.d(P[1]), .Ki(ko_stage2f), .rst(rst), .q(Q[1]), .Ko(ko_out1));
-  ncl_reg_null rQ2(.d(P[2]), .Ki(ko_stage2f), .rst(rst), .q(Q[2]), .Ko(ko_out2));
-  ncl_reg_null rQ3(.d(P[3]), .Ki(ko_stage2f), .rst(rst), .q(Q[3]), .Ko(ko_out3));
-  ncl_reg_null rQ4(.d(P[4]), .Ki(ko_stage2f), .rst(rst), .q(Q[4]), .Ko(ko_out4));
-  ncl_reg_null rQ5(.d(P[5]), .Ki(ko_stage2f), .rst(rst), .q(Q[5]), .Ko(ko_out5));
+  ncl_reg_null rQ0(.d(Po_pre[0]), .Ki(ko_stage2f), .rst(rst), .q(Po[0]), .Ko(ko_out0));
+  ncl_reg_null rQ1(.d(Po_pre[1]), .Ki(ko_stage2f), .rst(rst), .q(Po[1]), .Ko(ko_out1));
+  ncl_reg_null rQ2(.d(Po_pre[2]), .Ki(ko_stage2f), .rst(rst), .q(Po[2]), .Ko(ko_out2));
+  ncl_reg_null rQ3(.d(P[3]), .Ki(ko_stage2f), .rst(rst), .q(Po[3]), .Ko(ko_out3));
+  ncl_reg_null rQ4(.d(P[4]), .Ki(ko_stage2f), .rst(rst), .q(Po[4]), .Ko(ko_out4));
+  ncl_reg_null rQ5(.d(c6), .Ki(ko_stage2f), .rst(rst), .q(Po[5]), .Ko(ko_out5));
   
   // completion tree to generate final Ko
-  logic ct1, ct2;
-  th22x0 cstg1(.a(ko_out0), .b(ko_out1), .z(ct1));
-  th22x0 cstg2(.a(ko_out2), .b(ko_out3), .z(ct2));
-  th22x0 cstg3(.a(ct1),      .b(ct2),      .z(ko_mid));
-  th22x0 cstg4(.a(ko_out4), .b(ko_out5), .z(ct1));
-  th22x0 cstg5(.a(ko_mid),  .b(ct1),      .z(Ko));
+  wire ct10, ct11, ct12;
+  wire ct20;
+
+  th22x0 cstg1(.a(ko_out0), .b(ko_out1), .z(ct10));
+  th22x0 cstg2(.a(ko_out2), .b(ko_out3), .z(ct11));
+  th22x0 cstg3(.a(ct10),    .b(ct11),    .z(ct20));
+  th22x0 cstg4(.a(ko_out4), .b(ko_out5), .z(ct12));
+  th22x0 cstg5(.a(ct20),    .b(ct12),    .z(Ko));   // final acknowledge
 
   // unpack P to outputs
   assign Po0_rail1 = Po[0].rail1;
