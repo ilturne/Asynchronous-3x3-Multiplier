@@ -399,6 +399,7 @@ module NCL_MULT3 (
   assign Ai[0].rail1 = Ai0_rail1;
   assign Ai[0].rail0 = Ai0_rail0;
   assign Ai[1].rail0 = Ai1_rail0;
+  assign Ai[1].rail1 = Ai1_rail1;
   assign Ai[2].rail1 = Ai2_rail1;
   assign Ai[2].rail0 = Ai2_rail0;
 
@@ -417,7 +418,7 @@ module NCL_MULT3 (
   
   // handshaking between stages
   logic ko_in, ko_mid, ko_mid2;
-  dual_rail_logic ko0, ko1, ko2, ko3, ko4, ko5;
+  dual_rail_logic c1, c2, c3, c4, c5, c6;
   dual_rail_logic t1, t2;
 
    // stage 1: input regs
@@ -439,26 +440,28 @@ module NCL_MULT3 (
   ncl_and0 and02(.x(A[0]), .y(B[2]), .z(m[6]));
   ncl_and0 and12(.x(A[1]), .y(B[2]), .z(m[7]));
   ncl_and0 and22(.x(A[2]), .y(B[2]), .z(m[8]));
-
+  
   // reduction: diagonal adders
-  ncl_ha0 ha1 (.x(m[1]), .y(m[3]), .sum(P[1]), .carry(ko0));
-  ncl_fa0 fa1 (.x(m[2]), .y(m[4]), .ci(ko0), .sum(t1), .co(ko1));
-  ncl_ha0 ha2 (.x(t1), .y(m[6]), .sum(P[2]), .carry(ko2));
-  ncl_fa0 fa2 (.x(ko2), .y(m[7]), .ci(ko1), .sum(t2), .co(ko3));
-  ncl_ha0 ha3 (.x(m[5]), .y(t2), .sum(P[3]), .carry(ko4));
-  ncl_ha0 fa3 (.x(m[8]), .y(ko3), .sum(P[4]), .carry(ko5));
-  assign P[0] = m[0];
-  assign P[5] = { ko5, ~ko5 };
+  ncl_ha0 ha1 (.x(m[1]), .y(m[3]), .sum(P[1]), .carry(c1));
+  ncl_fa0 fa1 (.x(m[2]), .y(m[4]), .ci(c1), .sum(t1), .co(c2));
+  ncl_ha0 ha2 (.x(t1), .y(m[6]), .sum(P[2]), .carry(c3));
 
-    // stage 2 registers (pipeline stage 2 handshake chain)
+  // stage 2 registers (pipeline stage 2 handshake chain)
   logic ko_stage2a, ko_stage2b, ko_stage2c, ko_stage2d, ko_stage2e, ko_stage2f;
-  ncl_reg_null rP0(.d(P[0]), .Ki(ko_mid2),    .rst(rst), .q(P[0]), .Ko(ko_stage2a));
+  ncl_reg_null rP0(.d(m[0]), .Ki(ko_mid2),    .rst(rst), .q(m[0]), .Ko(ko_stage2a));
   ncl_reg_null rP1(.d(P[1]), .Ki(ko_stage2a), .rst(rst), .q(P[1]), .Ko(ko_stage2b));
   ncl_reg_null rP2(.d(P[2]), .Ki(ko_stage2b), .rst(rst), .q(P[2]), .Ko(ko_stage2c));
-  ncl_reg_null rP3(.d(P[3]), .Ki(ko_stage2c), .rst(rst), .q(P[3]), .Ko(ko_stage2d));
+  ncl_reg_null rP3(.d(c3), .Ki(ko_stage2c), .rst(rst), .q(P[3]), .Ko(ko_stage2d));
   ncl_reg_null rP4(.d(P[4]), .Ki(ko_stage2d), .rst(rst), .q(P[4]), .Ko(ko_stage2e));
   ncl_reg_null rP5(.d(P[5]), .Ki(ko_stage2e), .rst(rst), .q(P[5]), .Ko(ko_stage2f));
 
+  ncl_fa0 fa2 (.x(c2), .y(m[7]), .ci(c3), .sum(t2), .co(c4));
+  ncl_ha0 ha3 (.x(m[5]), .y(t2), .sum(P[3]), .carry(c5));
+  ncl_ha0 fa3 (.x(m[8]), .y(c4), .sum(P[4]), .carry(c6));
+  
+  assign P[0] = m[0];
+  assign P[5] = { ko5, ~ko5 };
+  
   // stage 3 output regs & completion tree
   dual_rail_logic Q [0:5];
   logic ko_out0, ko_out1, ko_out2, ko_out3, ko_out4, ko_out5;
@@ -470,27 +473,12 @@ module NCL_MULT3 (
   ncl_reg_null rQ5(.d(P[5]), .Ki(ko_stage2f), .rst(rst), .q(Q[5]), .Ko(ko_out5));
   
   // completion tree to generate final Ko
-  logic c1, c2;
-  th22x0 cstg1(.a(ko_out0), .b(ko_out1), .z(c1));
-  th22x0 cstg2(.a(ko_out2), .b(ko_out3), .z(c2));
-  th22x0 cstg3(.a(c1),      .b(c2),      .z(ko_mid));
-  th22x0 cstg4(.a(ko_out4), .b(ko_out5), .z(c1));
-  th22x0 cstg5(.a(ko_mid),  .b(c1),      .z(Ko));
-
-  // unpack Q to outputs
-  assign Po0_rail1 = Q[0].rail1;
-  assign Po0_rail0 = Q[0].rail0;
-  assign Po1_rail1 = Q[1].rail1;
-  assign Po1_rail0 = Q[1].rail0;
-  assign Po2_rail1 = Q[2].rail1;
-  assign Po2_rail0 = Q[2].rail0;
-  assign Po3_rail1 = Q[3].rail1;
-  assign Po3_rail0 = Q[3].rail0;
-  assign Po4_rail1 = Q[4].rail1;
-  assign Po4_rail0 = Q[4].rail0;
-  assign Po5_rail1 = Q[5].rail1;
-  assign Po5_rail0 = Q[5].rail0;
-  // ... instantiate rP1..rP5 .Ko's then C-elements to Ko
+  logic ct1, ct2;
+  th22x0 cstg1(.a(ko_out0), .b(ko_out1), .z(ct1));
+  th22x0 cstg2(.a(ko_out2), .b(ko_out3), .z(ct2));
+  th22x0 cstg3(.a(ct1),      .b(ct2),      .z(ko_mid));
+  th22x0 cstg4(.a(ko_out4), .b(ko_out5), .z(ct1));
+  th22x0 cstg5(.a(ko_mid),  .b(ct1),      .z(Ko));
 
   // unpack P to outputs
   assign Po0_rail1 = Po[0].rail1;
