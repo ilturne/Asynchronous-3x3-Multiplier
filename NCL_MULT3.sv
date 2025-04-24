@@ -418,17 +418,17 @@ module NCL_MULT3 (
   dual_rail_logic [5:0] P;      // Stage 3 registers
   
   // handshaking between stages
-  logic ko_in, ko_mid, ko_mid2;
+  logic ko_in, ko_mid, ko_mid2, ko_mid3, ko_mid4, ko_mid5;
   dual_rail_logic c1, c2, c3, c4, c5, c6;
   dual_rail_logic t1, t2;
 
    // stage 1: input regs
   ncl_reg_null rA0(.d(Ai[0]), .Ki(Ki),      .rst(rst), .q(A[0]), .Ko(ko_in));
-  ncl_reg_null rA1(.d(Ai[1]), .Ki(ko_in),   .rst(rst), .q(A[1]), .Ko(ko_mid));
-  ncl_reg_null rA2(.d(Ai[2]), .Ki(ko_mid),  .rst(rst), .q(A[2]), .Ko(ko_mid2));
-  ncl_reg_null rB0(.d(Bi[0]), .Ki(Ki),      .rst(rst), .q(B[0]), .Ko());
-  ncl_reg_null rB1(.d(Bi[1]), .Ki(Ki),      .rst(rst), .q(B[1]), .Ko());
-  ncl_reg_null rB2(.d(Bi[2]), .Ki(Ki),      .rst(rst), .q(B[2]), .Ko());
+  ncl_reg_null rA1(.d(Ai[1]), .Ki(Ki),   .rst(rst), .q(A[1]), .Ko(ko_mid));
+  ncl_reg_null rA2(.d(Ai[2]), .Ki(Ki),  .rst(rst), .q(A[2]), .Ko(ko_mid2));
+  ncl_reg_null rB0(.d(Bi[0]), .Ki(Ki),      .rst(rst), .q(B[0]), .Ko(ko_mid3));
+  ncl_reg_null rB1(.d(Bi[1]), .Ki(Ki),      .rst(rst), .q(B[1]), .Ko(ko_mid4));
+  ncl_reg_null rB2(.d(Bi[2]), .Ki(Ki),      .rst(rst), .q(B[2]), .Ko(ko_mid5));
 
   // 3×3 array: partial products m0..m8
   dual_rail_logic m[8:0];
@@ -447,16 +447,41 @@ module NCL_MULT3 (
   ncl_fa0 fa1 (.x(m[2]), .y(m[4]), .ci(c1), .sum(t1), .co(c2));
   ncl_ha0 ha2 (.x(t1), .y(m[6]), .sum(P[2]), .carry(c3));
 
+  wire done_abcd;     // four-input C-element
+  th44x0 c_abcd (
+      .a(ko_in  ),   // A0
+      .b(ko_mid ),   // A1
+      .c(ko_mid2),   // A2
+      .d(ko_mid3),   // B0
+      .z(done_abcd)
+  );
+
+  // pair the remaining two Ko’s
+  wire done_ef;       // two-input C-element
+  th22x0 c_ef (
+      .a(ko_mid4),   // B1
+      .b(ko_mid5),   // B2
+      .z(done_ef)
+  );
+
+  // -------- second level ------------------------------------------------
+  wire done_stage1;   // final AND of the two first-level results
+  th22x0 c_stage1 (
+      .a(done_abcd),
+      .b(done_ef),
+      .z(done_stage1)
+  );
+
   // stage 2 registers (pipeline stage 2 handshake chain)
   logic ko_stage2a, ko_stage2b, ko_stage2c, ko_stage2d, ko_stage2e, ko_stage2f, ko_stage2g, ko_stage2h;
-  ncl_reg_null rP0(.d(m[0]), .Ki(ko_mid2),    .rst(rst), .q(Po_pre[0]), .Ko(ko_stage2a));
-  ncl_reg_null rP1(.d(P[1]), .Ki(ko_stage2a), .rst(rst), .q(Po_pre[1]), .Ko(ko_stage2b));
-  ncl_reg_null rP2(.d(P[2]), .Ki(ko_stage2b), .rst(rst), .q(Po_pre[2]), .Ko(ko_stage2c));
-  ncl_reg_null rP3(.d(c3), .Ki(ko_stage2c), .rst(rst), .q(Po_pre[3]), .Ko(ko_stage2d));
-  ncl_reg_null rP4(.d(c2), .Ki(ko_stage2d), .rst(rst), .q(Po_pre[4]), .Ko(ko_stage2e));
-  ncl_reg_null rP5(.d(m[7]), .Ki(ko_stage2e), .rst(rst), .q(Po_pre[5]), .Ko(ko_stage2f));
-  ncl_reg_null rP6(.d(m[5]), .Ki(ko_stage2f), .rst(rst), .q(Po_pre[6]), .Ko(ko_stage2g));
-  ncl_reg_null rP7(.d(m[8]), .Ki(ko_stage2f), .rst(rst), .q(Po_pre[7]), .Ko(ko_stage2h));
+  ncl_reg_null rP0(.d(m[0]), .Ki(done_stage1),    .rst(rst), .q(Po_pre[0]), .Ko(ko_stage2a));
+  ncl_reg_null rP1(.d(P[1]), .Ki(done_stage1), .rst(rst), .q(Po_pre[1]), .Ko(ko_stage2b));
+  ncl_reg_null rP2(.d(P[2]), .Ki(done_stage1), .rst(rst), .q(Po_pre[2]), .Ko(ko_stage2c));
+  ncl_reg_null rP3(.d(c3), .Ki(done_stage1), .rst(rst), .q(Po_pre[3]), .Ko(ko_stage2d));
+  ncl_reg_null rP4(.d(c2), .Ki(done_stage1), .rst(rst), .q(Po_pre[4]), .Ko(ko_stage2e));
+  ncl_reg_null rP5(.d(m[7]), .Ki(done_stage1), .rst(rst), .q(Po_pre[5]), .Ko(ko_stage2f));
+  ncl_reg_null rP6(.d(m[5]), .Ki(done_stage1), .rst(rst), .q(Po_pre[6]), .Ko(ko_stage2g));
+  ncl_reg_null rP7(.d(m[8]), .Ki(done_stage1), .rst(rst), .q(Po_pre[7]), .Ko(ko_stage2h));
 
   ncl_fa0 fa2 (.x(Po_pre[4]), .y(Po_pre[5]), .ci(Po_pre[3]), .sum(t2), .co(c4));
   ncl_ha0 ha3 (.x(Po_pre[6]), .y(t2), .sum(P[3]), .carry(c5));
@@ -465,12 +490,39 @@ module NCL_MULT3 (
   // stage 3 output regs & completion tree
   logic ko_out0, ko_out1, ko_out2, ko_out3, ko_out4, ko_out5;
   
-  ncl_reg_null rQ0(.d(Po_pre[0]), .Ki(ko_stage2f), .rst(rst), .q(Po[0]), .Ko(ko_out0));
-  ncl_reg_null rQ1(.d(Po_pre[1]), .Ki(ko_stage2f), .rst(rst), .q(Po[1]), .Ko(ko_out1));
-  ncl_reg_null rQ2(.d(Po_pre[2]), .Ki(ko_stage2f), .rst(rst), .q(Po[2]), .Ko(ko_out2));
-  ncl_reg_null rQ3(.d(P[3]), .Ki(ko_stage2f), .rst(rst), .q(Po[3]), .Ko(ko_out3));
-  ncl_reg_null rQ4(.d(P[4]), .Ki(ko_stage2f), .rst(rst), .q(Po[4]), .Ko(ko_out4));
-  ncl_reg_null rQ5(.d(c6), .Ki(ko_stage2f), .rst(rst), .q(Po[5]), .Ko(ko_out5));
+  wire done_stage2_lvl1a, done_stage2_lvl1b;   // first-level outputs
+  wire done_stage2;                            // final Stage-2 done
+
+  // group Ko's four-by-four to stay within TH44x0 fan-in
+  th44x0 c_s2_a ( 
+    .a(ko_stage2a), 
+    .b(ko_stage2b),
+    .c(ko_stage2c), 
+    .d(ko_stage2d), 
+    .z(done_stage2_lvl1a) 
+    );
+
+  th44x0 c_s2_b ( 
+    .a(ko_stage2e), 
+    .b(ko_stage2f),
+    .c(ko_stage2g), 
+    .d(ko_stage2h), 
+    .z(done_stage2_lvl1b) 
+    );
+
+  // second level – 2-input C-element
+  th22x0 c_s2_final ( 
+    .a(done_stage2_lvl1a),
+    .b(done_stage2_lvl1b),
+    .z(done_stage2) 
+    );
+
+  ncl_reg_null rQ0(.d(Po_pre[0]), .Ki(done_stage2), .rst(rst), .q(Po[0]), .Ko(ko_out0));
+  ncl_reg_null rQ1(.d(Po_pre[1]), .Ki(done_stage2), .rst(rst), .q(Po[1]), .Ko(ko_out1));
+  ncl_reg_null rQ2(.d(Po_pre[2]), .Ki(done_stage2), .rst(rst), .q(Po[2]), .Ko(ko_out2));
+  ncl_reg_null rQ3(.d(P[3]), .Ki(done_stage2), .rst(rst), .q(Po[3]), .Ko(ko_out3));
+  ncl_reg_null rQ4(.d(P[4]), .Ki(done_stage2), .rst(rst), .q(Po[4]), .Ko(ko_out4));
+  ncl_reg_null rQ5(.d(c6), .Ki(done_stage2), .rst(rst), .q(Po[5]), .Ko(ko_out5));
   
   // completion tree to generate final Ko
   wire ct10, ct11, ct12;
