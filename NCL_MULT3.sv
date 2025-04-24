@@ -484,7 +484,7 @@ module NCL_MULT3 (
 
   ncl_fa0 fa2 (.x(Po_pre[3]), .y(Po_pre[4]), .ci(Po_pre[5]), .sum(t2), .co(c4));
   ncl_ha0 ha3 (.x(Po_pre[6]), .y(t2), .sum(P[3]), .carry(c5));
-  ncl_ha0 fa3 (.x(Po_pre[7]), .y(c4), .ci(c5), .sum(P[4]), .carry(c6));
+  ncl_fa0 fa3 (.x(Po_pre[7]), .y(c4), .ci(c5), .sum(P[4]), .co(c6));
   
   // stage 3 output regs & completion tree
   logic ko_out0, ko_out1, ko_out2, ko_out3, ko_out4, ko_out5;
