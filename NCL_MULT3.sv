@@ -87,38 +87,6 @@ module th22rx0 (
 
 endmodule
 
-// th23x0 (3-input majority for HA/FA)
-  module th23x0 (
-    input wire a,
-    input wire b,
-    input wire c,
-    output reg z
-);
-    always @ (a or b or c) begin
-        if (a == 1'b0 && b == 1'b0 && c == 1'b0)
-            z = 1'b0;
-        else if ((a & b) || (b & c) || (c & a))
-            z = 1'b1;
-        // Else: retain previous value (no change)
-    end
-endmodule
-
-// th33w2x0 (weighted TH33 for FA partial sums)
-  module th33w2x0 (
-    input wire a,
-    input wire b,
-    input wire c,
-    output reg z
-);
-    always @ (a or b or c) begin
-        if (a == 1'b0 && b == 1'b0 && c == 1'b0)
-            z = 1'b0;
-        else if (a == 1'b1 && (b == 1'b1 || c == 1'b1))
-            z = 1'b1;
-        // Else: retain previous value (no change)
-    end
-endmodule
-
 // th44x0 (4-input AND)
 module th44x0 (
     input wire a,
@@ -136,36 +104,21 @@ module th44x0 (
     end
 endmodule
 
-// th33x0 (3-input AND)
-module th33x0 (
-    input wire a,
-    input wire b,
-    input wire c,
-    output reg z
-);
-    always @ (a or b or c) begin
-        if (a & b & c)
-            z = 1'b1;
-        else if (~a & ~b & ~c)
-            z = 1'b0;
-        // Else: retain previous value (no change)
-    end
-endmodule
-
 // thand0x0 (4-input OR for AND-0 function rail0)
 module thand0x0 (
-    input wire a,
-    input wire b,
-    input wire c,
-    input wire d,
-    output reg z
+    input  wire a,  // x.rail0
+    input  wire b,  // y.rail0
+    input  wire c,  // x.rail1
+    input  wire d,  // y.rail1
+    output reg  z
 );
-    always @ (a or b or c or d) begin
-        if (~a & ~b & ~c & ~d)
+    always @* begin
+        if (~a & ~b & ~c & ~d)             // all NULL
             z = 1'b0;
         else if ((a & b) || (b & c) || (a & d))
-            z = 1'b1;
-        // Else: retain previous value (no change)
+            z = 1'b1;                      // at least one operand is DATA0
+        else
+            z = 1'b0;
     end
 endmodule
 
@@ -186,40 +139,6 @@ module th24compx0 (
     end
 endmodule
 
-// thxor0x0 (XOR as THxor0)
-module thxor0x0 (
-    input wire a,
-    input wire b,
-    input wire c,
-    input wire d,
-    output reg z
-);
-    always @ (a or b or c or d) begin
-        if (~a & ~b & ~c & ~d)
-            z = 1'b0;
-        else if ((a & b) || (c & d))
-            z = 1'b1;
-        // Else: retain previous value (no change)
-    end
-endmodule
-
-// th34w2x0 (weighted TH34w2 for full-adder sum)
-  module th34w2x0 (
-    input wire a,
-    input wire b,
-    input wire c,
-    input wire d,
-    output reg z
-);
-    always @ (a or b or c or d) begin
-        if (~a & ~b & ~c & ~d)
-            z = 1'b0;
-        else if ((a & b) || (a & c)|| (a & d)|| (b & c & d))
-            z = 1'b1;
-        // Else: retain previous value (no change)
-    end
-endmodule
-
 //----------------------------------------------------------------------------
 // 1-bit, reset-to-NULL dual-rail register:
 //   - on rst=1, q rails → NULL
@@ -228,36 +147,45 @@ endmodule
 //   - Ko= NOR(q.rail0, q.rail1)
 //----------------------------------------------------------------------------
 
-module ncl_reg_null (
-  input  dual_rail_logic d,
-  input  logic         Ki,
-  input  logic         rst,
-  output dual_rail_logic q,
-  output logic         Ko
+module ncl_reg_null
+(
+  input  dual_rail_logic d,   
+  input  logic           Ki,  
+  input  logic           rst, 
+  output dual_rail_logic q,   
+  output logic           Ko   
 );
 
-  // rail0: th22rx0 implements the reset-to-0, AND-style handshaking
-  th22rx0 u_th0 (
-    .a(d.rail0),
-    .b(Ki),
-    .rst(rst),
-    .z(q.rail0)
-  );
+    logic q0, q1;
 
-  // rail1: same, but reset-to-0 and AND
-  th22rx0 u_th1 (
-    .a(d.rail1),
-    .b(Ki),
-    .rst(rst),
-    .z(q.rail1)
-  );
+    always @(*) begin : reg_behaviour
+        q0 = q.rail0;
+        q1 = q.rail1;
 
-  // Ko = NOR(q0, q1)
-  th12nx0 u_nor (
-    .a(q.rail0),
-    .b(q.rail1),
-    .zb(Ko)
-  );
+        if (rst) begin
+            q0 = 1'b0;
+            q1 = 1'b0;
+        end
+      
+        else if (!Ki) begin
+            q0 = 1'b0;
+            q1 = 1'b0;
+        end
+
+        else begin
+            if (d.rail0 && !q1)
+                q0 = 1'b1;
+
+            else if (d.rail1 && !q0)
+                q1 = 1'b1;
+        end
+    end
+
+    assign q.rail0 = q0;
+    assign q.rail1 = q1;
+
+    // Ko is 1 while the register is NULL (both rails low)
+    assign Ko = ~(q0 | q1); 
 
 endmodule
 
