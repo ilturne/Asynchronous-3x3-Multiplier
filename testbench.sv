@@ -12,7 +12,13 @@ module tb;
 
   // ------------- DUT -------------------
   NCL_MULT3 dut (.*);   // SystemVerilog .* shorthand (all names match)
-
+  
+  wire [2:0] ai_vec, bi_vec;    
+  wire [5:0] prod_vec;  
+  
+  assign ai_vec   = {Ai2_rail1, Ai1_rail1, Ai0_rail1};  // show only rail1’s
+  assign bi_vec   = {Bi2_rail1, Bi1_rail1, Bi0_rail1};
+  assign prod_vec = {Po5_rail1,Po4_rail1,Po3_rail1,Po2_rail1,Po1_rail1,Po0_rail1};
   // helper to drive one DATA value then NULL spacer
   task apply_DR_input(
         input logic a1, a0,
@@ -31,11 +37,10 @@ module tb;
   endtask
   
   task automatic drive_operands (input [2:0] A, input [2:0] B);
-    // A2 A1 A0
     encode_bit(A[0], Ai0_rail1, Ai0_rail0);
     encode_bit(A[1], Ai1_rail1, Ai1_rail0);
     encode_bit(A[2], Ai2_rail1, Ai2_rail0);
-    // B2 B1 B0
+
     encode_bit(B[0], Bi0_rail1, Bi0_rail0);
     encode_bit(B[1], Bi1_rail1, Bi1_rail0);
     encode_bit(B[2], Bi2_rail1, Bi2_rail0);
@@ -58,13 +63,11 @@ module tb;
   // ------------- stimulus --------------
   initial begin
     rst = 1; Ki = 1'b1;     // reset to NULL
-    #20  rst = 0;
+    #20  rst = 0;      
 
-    $display("time  Ai  Bi    | product");
-    $monitor("%4t  %b%b  %b%b | %b%b%b%b%b%b",
-             $time,
-             Ai0_rail1,Ai0_rail0,Bi0_rail1,Bi0_rail0,
-             Po5_rail1,Po4_rail1,Po3_rail1,Po2_rail1,Po1_rail1,Po0_rail1);
+    $display(" time |   Ai |   Bi |     product ");
+    $monitor("%5t | %03b | %03b | %06b",
+         $time, ai_vec, bi_vec, prod_vec);
 
     apply_DR_input(1'b0,1'b1, 1'b0,1'b1);  // 0 × 0
     apply_DR_input(1'b0,1'b1, 1'b1,1'b0);  // 0 × 1
