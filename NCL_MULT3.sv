@@ -147,45 +147,36 @@ endmodule
 //   - Ko= NOR(q.rail0, q.rail1)
 //----------------------------------------------------------------------------
 
-module ncl_reg_null
-(
-  input  dual_rail_logic d,   
-  input  logic           Ki,  
-  input  logic           rst, 
-  output dual_rail_logic q,   
-  output logic           Ko   
+module ncl_reg_null (
+  input  dual_rail_logic d,
+  input  logic         Ki,
+  input  logic         rst,
+  output dual_rail_logic q,
+  output logic         Ko
 );
 
-    logic q0, q1;
+  // rail0: th22rx0 implements the reset-to-0, AND-style handshaking
+  th22rx0 u_th0 (
+    .a(d.rail0),
+    .b(Ki),
+    .rst(rst),
+    .z(q.rail0)
+  );
 
-    always @(*) begin : reg_behaviour
-        q0 = q.rail0;
-        q1 = q.rail1;
+  // rail1: same, but reset-to-0 and AND
+  th22rx0 u_th1 (
+    .a(d.rail1),
+    .b(Ki),
+    .rst(rst),
+    .z(q.rail1)
+  );
 
-        if (rst) begin
-            q0 = 1'b0;
-            q1 = 1'b0;
-        end
-      
-        else if (!Ki) begin
-            q0 = 1'b0;
-            q1 = 1'b0;
-        end
-
-        else begin
-            if (d.rail0 && !q1)
-                q0 = 1'b1;
-
-            else if (d.rail1 && !q0)
-                q1 = 1'b1;
-        end
-    end
-
-    assign q.rail0 = q0;
-    assign q.rail1 = q1;
-
-    // Ko is 1 while the register is NULL (both rails low)
-    assign Ko = ~(q0 | q1); 
+  // Ko = NOR(q0, q1)
+  th12nx0 u_nor (
+    .a(q.rail0),
+    .b(q.rail1),
+    .zb(Ko)
+  );
 
 endmodule
 
@@ -374,47 +365,11 @@ module NCL_MULT3 (
   ncl_fa0 fa1 (.x(m[2]), .y(m[4]), .ci(c1), .sum(t1), .co(c2));
   ncl_ha0 ha2 (.x(t1), .y(m[6]), .sum(P[2]), .carry(c3));
 
-  wire done_abcd;     // four-input C-element
-  th44x0 c_abcd (
-      .a(ko_in  ),   // A0
-      .b(ko_mid ),   // A1
-      .c(ko_mid2),   // A2
-      .d(ko_mid3),   // B0
-      .z(done_abcd)
-  );
-
-  // pair the remaining two Ko’s
-  wire done_ef;       // two-input C-element
-  th22x0 c_ef (
-      .a(ko_mid4),   // B1
-      .b(ko_mid5),   // B2
-      .z(done_ef)
-  );
-
-  // -------- second level ------------------------------------------------
-  wire done_stage1;   // final AND of the two first-level results
-  th22x0 c_stage1 (
-      .a(done_abcd),
-      .b(done_ef),
-      .z(done_stage1)
-  );
-
-  // stage 2 registers (pipeline stage 2 handshake chain)
-  logic ko_stage2a, ko_stage2b, ko_stage2c, ko_stage2d, ko_stage2e, ko_stage2f, ko_stage2g, ko_stage2h;
-  ncl_reg_null mid_reg0(.d(m[0]), .Ki(done_stage1),    .rst(rst), .q(Po_pre[0]), .Ko(ko_stage2a));
-  ncl_reg_null mid_reg1(.d(P[1]), .Ki(done_stage1), .rst(rst), .q(Po_pre[1]), .Ko(ko_stage2b));
-  ncl_reg_null mid_reg2(.d(P[2]), .Ki(done_stage1), .rst(rst), .q(Po_pre[2]), .Ko(ko_stage2c));
-  ncl_reg_null mid_reg3(.d(c3), .Ki(done_stage1), .rst(rst), .q(Po_pre[3]), .Ko(ko_stage2d));
-  ncl_reg_null mid_reg4(.d(c2), .Ki(done_stage1), .rst(rst), .q(Po_pre[4]), .Ko(ko_stage2e));
-  ncl_reg_null mid_reg5(.d(m[7]), .Ki(done_stage1), .rst(rst), .q(Po_pre[5]), .Ko(ko_stage2f));
-  ncl_reg_null mid_reg6(.d(m[5]), .Ki(done_stage1), .rst(rst), .q(Po_pre[6]), .Ko(ko_stage2g));
-  ncl_reg_null mid_reg7(.d(m[8]), .Ki(done_stage1), .rst(rst), .q(Po_pre[7]), .Ko(ko_stage2h));
-
-  ncl_fa0 fa2 (.x(Po_pre[3]), .y(Po_pre[4]), .ci(Po_pre[5]), .sum(t2), .co(c4));
-  ncl_ha0 ha3 (.x(Po_pre[6]), .y(t2), .sum(P[3]), .carry(c5));
-  ncl_fa0 fa3 (.x(Po_pre[7]), .y(c4), .ci(c5), .sum(P[4]), .co(c6));
+  ncl_fa0 fa2 (.x(m[7]), .y(c2), .ci(c3), .sum(t2), .co(c4));
+  ncl_ha0 ha3 (.x(m[5]), .y(t2), .sum(P[3]), .carry(c5));
+  ncl_fa0 fa3 (.x(m[8]), .y(c4), .ci(c5), .sum(P[4]), .co(c6));
   
-  // stage 3 output regs & completion tree
+  // output regs & completion tree
   logic ko_out0, ko_out1, ko_out2, ko_out3, ko_out4, ko_out5;
   
   wire done_stage2_lvl1a, done_stage2_lvl1b;   // first-level outputs
@@ -422,18 +377,16 @@ module NCL_MULT3 (
 
   // group Ko's four-by-four to stay within TH44x0 fan-in
   th44x0 c_s2_a ( 
-    .a(ko_stage2a), 
-    .b(ko_stage2b),
-    .c(ko_stage2c), 
-    .d(ko_stage2d), 
+    .a(ko_in), 
+    .b(ko_mid),
+    .c(ko_mid2), 
+    .d(ko_mid3), 
     .z(done_stage2_lvl1a) 
     );
 
-  th44x0 c_s2_b ( 
-    .a(ko_stage2e), 
-    .b(ko_stage2f),
-    .c(ko_stage2g), 
-    .d(ko_stage2h), 
+  th22x0 c_s2_b ( 
+    .a(ko_mid4), 
+    .b(ko_mid5),
     .z(done_stage2_lvl1b) 
     );
 
@@ -444,9 +397,9 @@ module NCL_MULT3 (
     .z(done_stage2) 
     );
 
-  ncl_reg_null rQ0(.d(Po_pre[0]), .Ki(done_stage2), .rst(rst), .q(Po[0]), .Ko(ko_out0));
-  ncl_reg_null rQ1(.d(Po_pre[1]), .Ki(done_stage2), .rst(rst), .q(Po[1]), .Ko(ko_out1));
-  ncl_reg_null rQ2(.d(Po_pre[2]), .Ki(done_stage2), .rst(rst), .q(Po[2]), .Ko(ko_out2));
+  ncl_reg_null rQ0(.d(m[0]), .Ki(done_stage2), .rst(rst), .q(Po[0]), .Ko(ko_out0));
+  ncl_reg_null rQ1(.d(P[1]), .Ki(done_stage2), .rst(rst), .q(Po[1]), .Ko(ko_out1));
+  ncl_reg_null rQ2(.d(P[2]), .Ki(done_stage2), .rst(rst), .q(Po[2]), .Ko(ko_out2));
   ncl_reg_null rQ3(.d(P[3]), .Ki(done_stage2), .rst(rst), .q(Po[3]), .Ko(ko_out3));
   ncl_reg_null rQ4(.d(P[4]), .Ki(done_stage2), .rst(rst), .q(Po[4]), .Ko(ko_out4));
   ncl_reg_null rQ5(.d(c6), .Ki(done_stage2), .rst(rst), .q(Po[5]), .Ko(ko_out5));
