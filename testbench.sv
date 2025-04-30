@@ -10,16 +10,21 @@ module tb;
   logic Po3_rail1, Po3_rail0, Po4_rail1, Po4_rail0, Po5_rail1, Po5_rail0;
   logic Ko;
 	
+  // ------------- Debug Outputs -----------
   dual_rail_logic [2:0] A_dbg, B_dbg; // for debugging purposes
+  dual_rail_logic [8:0] M_dbg;   // captures m[0..8]
   
   // ------------- DUT -------------------
-  NCL_MULT3 dut (.*, .dbg_A(A_dbg), .dbg_B(B_dbg));
+  NCL_MULT3 dut (.*, .dbg_A(A_dbg), .dbg_B(B_dbg), .dbg_M(M_dbg));
   
   wire [2:0] ai_vec, bi_vec;    
   wire [5:0] prod_vec;  
   
   wire [2:0] A_after  = {A_dbg[2].rail1, A_dbg[1].rail1, A_dbg[0].rail1};
   wire [2:0] B_after  = {B_dbg[2].rail1, B_dbg[1].rail1, B_dbg[0].rail1};
+  wire [8:0] M        = {M_dbg[8].rail1, M_dbg[7].rail1, M_dbg[6].rail1,
+                         M_dbg[5].rail1, M_dbg[4].rail1, M_dbg[3].rail1,
+                         M_dbg[2].rail1, M_dbg[1].rail1, M_dbg[0].rail1};
   
   assign ai_vec   = {Ai2_rail1, Ai1_rail1, Ai0_rail1};
   assign bi_vec   = {Bi2_rail1, Bi1_rail1, Bi0_rail1};
@@ -62,9 +67,10 @@ module tb;
     rst = 1; Ki = 1'b1; 
     #20  rst = 0;      
     
-    $display(" time | inA | inB | regA | regB | Ki | Ko");
-    $monitor("%5t | %03b | %03b | %03b | %03b | %0b | %0b",
-             $time, ai_vec, bi_vec, A_after, B_after, Ki, Ko);
+    $display(" time | inA | inB | regA | regB |   M   | Po| Ki | Ko");
+     $monitor("%5t | %03b | %03b | %03b | %03b | %09b | %05b | %0b | %0b",
+         $time, ai_vec, bi_vec, A_after, B_after,
+         M, prod_vec, Ki, Ko);
     end
   
   initial begin

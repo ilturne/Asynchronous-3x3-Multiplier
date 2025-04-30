@@ -311,7 +311,8 @@ module NCL_MULT3 (
 
   // ---------- debug / observation ports ----------
   output dual_rail_logic [2:0] dbg_A,
-  output dual_rail_logic [2:0] dbg_B
+  output dual_rail_logic [2:0] dbg_B,
+  output dual_rail_logic [8:0] dbg_M 
 );
 
   // 2-bit vectors to reconstruct your inputs and outputs
@@ -335,9 +336,8 @@ module NCL_MULT3 (
   assign Bi[2].rail0 = Bi2_rail0;
 
   // Internal dual-rail vectors for registration stages:
-  dual_rail_logic [2:0] A, B;   // Stage 1 registers
-  dual_rail_logic [7:0] Po_pre; // Stage 2 registers
-  dual_rail_logic [5:0] P;      // Stage 3 registers
+  dual_rail_logic [2:0] A, B;   // Input registers
+  dual_rail_logic [5:0] P;      // Output registers
   
   // handshaking between stages
   logic ko_in, ko_mid, ko_mid2, ko_mid3, ko_mid4, ko_mid5;
@@ -356,7 +356,7 @@ module NCL_MULT3 (
   assign dbg_B = B;
 
   // 3×3 array: partial products m0..m8
-  dual_rail_logic m[8:0];
+  dual_rail_logic [8:0] m;
   ncl_and0 and00(.x(A[0]), .y(B[0]), .z(m[0]));
   ncl_and0 and10(.x(A[1]), .y(B[0]), .z(m[1]));
   ncl_and0 and20(.x(A[2]), .y(B[0]), .z(m[2]));
@@ -367,6 +367,8 @@ module NCL_MULT3 (
   ncl_and0 and12(.x(A[1]), .y(B[2]), .z(m[7]));
   ncl_and0 and22(.x(A[2]), .y(B[2]), .z(m[8]));
   
+  assign dbg_M = m;
+
   // reduction: diagonal adders
   ncl_ha0 ha1 (.x(m[1]), .y(m[3]), .sum(P[1]), .carry(c1));
   ncl_fa0 fa1 (.x(m[2]), .y(m[4]), .ci(c1), .sum(t1), .co(c2));
@@ -378,39 +380,14 @@ module NCL_MULT3 (
   
   // output regs & completion tree
   logic ko_out0, ko_out1, ko_out2, ko_out3, ko_out4, ko_out5;
-  
-  wire done_stage2_lvl1a, done_stage2_lvl1b;   // first-level outputs
-  wire done_stage2;                            // final Stage-2 done
 
-  // group Ko's four-by-four to stay within TH44x0 fan-in
-  th44x0 c_s2_a ( 
-    .a(ko_in), 
-    .b(ko_mid),
-    .c(ko_mid2), 
-    .d(ko_mid3), 
-    .z(done_stage2_lvl1a) 
-    );
+  ncl_reg_null rQ0(.d(m[0]), .Ki(Ki), .rst(rst), .q(Po[0]), .Ko(ko_out0));
+  ncl_reg_null rQ1(.d(P[1]), .Ki(Ki), .rst(rst), .q(Po[1]), .Ko(ko_out1));
+  ncl_reg_null rQ2(.d(P[2]), .Ki(Ki), .rst(rst), .q(Po[2]), .Ko(ko_out2));
+  ncl_reg_null rQ3(.d(P[3]), .Ki(Ki), .rst(rst), .q(Po[3]), .Ko(ko_out3));
+  ncl_reg_null rQ4(.d(P[4]), .Ki(Ki), .rst(rst), .q(Po[4]), .Ko(ko_out4));
+  ncl_reg_null rQ5(.d(c6), .Ki(Ki), .rst(rst), .q(Po[5]), .Ko(ko_out5));
 
-  th22x0 c_s2_b ( 
-    .a(ko_mid4), 
-    .b(ko_mid5),
-    .z(done_stage2_lvl1b) 
-    );
-
-  // second level – 2-input C-element
-  th22x0 c_s2_final ( 
-    .a(done_stage2_lvl1a),
-    .b(done_stage2_lvl1b),
-    .z(done_stage2) 
-    );
-
-  ncl_reg_null rQ0(.d(m[0]), .Ki(done_stage2), .rst(rst), .q(Po[0]), .Ko(ko_out0));
-  ncl_reg_null rQ1(.d(P[1]), .Ki(done_stage2), .rst(rst), .q(Po[1]), .Ko(ko_out1));
-  ncl_reg_null rQ2(.d(P[2]), .Ki(done_stage2), .rst(rst), .q(Po[2]), .Ko(ko_out2));
-  ncl_reg_null rQ3(.d(P[3]), .Ki(done_stage2), .rst(rst), .q(Po[3]), .Ko(ko_out3));
-  ncl_reg_null rQ4(.d(P[4]), .Ki(done_stage2), .rst(rst), .q(Po[4]), .Ko(ko_out4));
-  ncl_reg_null rQ5(.d(c6), .Ki(done_stage2), .rst(rst), .q(Po[5]), .Ko(ko_out5));
-  
   // completion tree to generate final Ko
   wire ct10, ct11, ct12;
   wire ct20;
