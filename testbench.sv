@@ -58,7 +58,7 @@ module tb;
    // 3. drop back to NULL so the pipeline can clear
    drive_operands(3'b000, 3'b000);
    Ki = 1'b0;
-   #20;
+   #50;
 
   endtask
 
@@ -75,7 +75,12 @@ module tb;
   
   initial begin
    ncl_cycle( 3'd2 , 3'd7 );   // 2×7
-   #100 $finish;
+   #100;
+   ncl_cycle( 3'd3 , 3'd5 );   // 3×5
+   #100;
+   ncl_cycle( 3'd4 , 3'd4 );   // 4×4
+   #100;
+   $finish;
    end
  
 endmodule
