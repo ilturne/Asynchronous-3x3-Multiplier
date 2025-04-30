@@ -307,7 +307,11 @@ module NCL_MULT3 (
   output logic Po4_rail1, Po4_rail0,
   output logic Po5_rail1, Po5_rail0,
   // acknowledge
-  output logic Ko
+  output logic Ko,
+
+  // ---------- debug / observation ports ----------
+  output dual_rail_logic [2:0] dbg_A,
+  output dual_rail_logic [2:0] dbg_B
 );
 
   // 2-bit vectors to reconstruct your inputs and outputs
@@ -340,13 +344,16 @@ module NCL_MULT3 (
   dual_rail_logic c1, c2, c3, c4, c5, c6;
   dual_rail_logic t1, t2;
 
-  // stage 1: input regs
+  // Input regs
   ncl_reg_null in_Reg_A0(.d(Ai[0]), .Ki(Ki), .rst(rst), .q(A[0]), .Ko(ko_in));
   ncl_reg_null in_Reg_A1(.d(Ai[1]), .Ki(Ki), .rst(rst), .q(A[1]), .Ko(ko_mid));
   ncl_reg_null in_Reg_A2(.d(Ai[2]), .Ki(Ki), .rst(rst), .q(A[2]), .Ko(ko_mid2));
   ncl_reg_null in_Reg_B0(.d(Bi[0]), .Ki(Ki), .rst(rst), .q(B[0]), .Ko(ko_mid3));
   ncl_reg_null in_Reg_B1(.d(Bi[1]), .Ki(Ki), .rst(rst), .q(B[1]), .Ko(ko_mid4));
   ncl_reg_null in_Reg_B2(.d(Bi[2]), .Ki(Ki), .rst(rst), .q(B[2]), .Ko(ko_mid5));
+  
+  assign dbg_A = A;  
+  assign dbg_B = B;
 
   // 3×3 array: partial products m0..m8
   dual_rail_logic m[8:0];
