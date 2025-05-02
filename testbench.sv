@@ -80,6 +80,8 @@ module tb;
    #100;
    ncl_cycle( 3'd4 , 3'd4 );   // 4×4
    #100;
+   ncl_cycle( 3'd7, 3'd7);   // 4×4
+   #100;
    $finish;
    end
  

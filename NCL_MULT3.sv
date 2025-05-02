@@ -275,7 +275,11 @@ module ncl_fa0 (
   // co.rail1 = t1.rail1 OR t2.rail1
   th12x0 u_or1(.a(t1.rail1), .b(t2.rail1), .z(co.rail1));
   // co.rail0 = NOR( t1.rail0 , t2.rail0 )
-  th12nx0 u_nor0(.a(t1.rail0), .b(t2.rail0), .zb(co.rail0));
+  thand0x0 u_and0z (
+    .a(t1.rail0), .b(t2.rail0),   // x0, y0
+    .c(t1.rail1), .d(t2.rail1),   // x1, y1   (choose the two ‘1’ rails)
+    .z(co.rail0)
+);
 
   // sum = p XOR ci  (same pattern as HA)
   th24compx0 u_sum1(.a(p.rail1), .b(ci.rail1), .c(p.rail0), .d(ci.rail0), .z(sum.rail1));
@@ -312,7 +316,11 @@ module NCL_MULT3 (
   // ---------- debug / observation ports ----------
   output dual_rail_logic [2:0] dbg_A,
   output dual_rail_logic [2:0] dbg_B,
-  output dual_rail_logic [8:0] dbg_M 
+  output dual_rail_logic [8:0] dbg_M, 
+
+  output logic [5:0] dbg_Ko_out,     // from each output register
+  output logic [5:0] dbg_Q_null,     // 1 while that Po[i] is still NULL
+  output logic [5:0] dbg_Q_data      // 1 while that Po[i] is DATA (either 0 or 1)
 );
 
   // 2-bit vectors to reconstruct your inputs and outputs
@@ -341,8 +349,7 @@ module NCL_MULT3 (
   
   // handshaking between stages
   logic ko_in, ko_mid, ko_mid2, ko_mid3, ko_mid4, ko_mid5;
-  dual_rail_logic c1, c2, c3, c4, c5, c6;
-  dual_rail_logic t1, t2;
+  
 
   // Input regs
   ncl_reg_null in_Reg_A0(.d(Ai[0]), .Ki(Ki), .rst(rst), .q(A[0]), .Ko(ko_in));
@@ -370,33 +377,64 @@ module NCL_MULT3 (
   assign dbg_M = m;
 
   // reduction: diagonal adders
+  dual_rail_logic c1, c2, c3, c4, c5, c6;
+  dual_rail_logic t1, t2;
   ncl_ha0 ha1 (.x(m[1]), .y(m[3]), .sum(P[1]), .carry(c1));
   ncl_fa0 fa1 (.x(m[2]), .y(m[4]), .ci(c1), .sum(t1), .co(c2));
-  ncl_ha0 ha2 (.x(t1), .y(m[6]), .sum(P[2]), .carry(c3));
-
+  ncl_ha0 ha2 (.x(t1),   .y(m[6]), .sum(P[2]), .carry(c3));
   ncl_fa0 fa2 (.x(m[7]), .y(c2), .ci(c3), .sum(t2), .co(c4));
   ncl_ha0 ha3 (.x(m[5]), .y(t2), .sum(P[3]), .carry(c5));
   ncl_fa0 fa3 (.x(m[8]), .y(c4), .ci(c5), .sum(P[4]), .co(c6));
   
-  // output regs & completion tree
-  logic ko_out0, ko_out1, ko_out2, ko_out3, ko_out4, ko_out5;
+  //---------------------------------------------------------------------------
+  // 1. Completion tree for combinational outputs
+  //---------------------------------------------------------------------------
+  wire done_p0, done_p1, done_p2, done_p3, done_p4, done_p5;
+  th12x0 done0(.a(m[0].rail1), .b(m[0].rail0), .z(done_p0));
+  th12x0 done1(.a(P[1].rail1), .b(P[1].rail0), .z(done_p1));
+  th12x0 done2(.a(P[2].rail1), .b(P[2].rail0), .z(done_p2));
+  th12x0 done3(.a(P[3].rail1), .b(P[3].rail0), .z(done_p3));
+  th12x0 done4(.a(P[4].rail1), .b(P[4].rail0), .z(done_p4));
+  th12x0 done5(.a(c6.rail1),    .b(c6.rail0),    .z(done_p5));
 
-  ncl_reg_null rQ0(.d(m[0]), .Ki(Ki), .rst(rst), .q(Po[0]), .Ko(ko_out0));
-  ncl_reg_null rQ1(.d(P[1]), .Ki(Ki), .rst(rst), .q(Po[1]), .Ko(ko_out1));
-  ncl_reg_null rQ2(.d(P[2]), .Ki(Ki), .rst(rst), .q(Po[2]), .Ko(ko_out2));
-  ncl_reg_null rQ3(.d(P[3]), .Ki(Ki), .rst(rst), .q(Po[3]), .Ko(ko_out3));
-  ncl_reg_null rQ4(.d(P[4]), .Ki(Ki), .rst(rst), .q(Po[4]), .Ko(ko_out4));
-  ncl_reg_null rQ5(.d(c6), .Ki(Ki), .rst(rst), .q(Po[5]), .Ko(ko_out5));
+  wire done_all1, done_all2, done_all3, done_all;
+  th22x0 ctd1(.a(done_p0), .b(done_p1), .z(done_all1));
+  th22x0 ctd2(.a(done_p2), .b(done_p3), .z(done_all2));
+  th22x0 ctd3(.a(done_p4), .b(done_p5), .z(done_all3));
+  wire done_upper;
+  th22x0 ctd4(.a(done_all1), .b(done_all2), .z(done_upper));
+  th22x0 ctd5(.a(done_upper),  .b(done_all3), .z(done_all));
+  
+  //---------------------------------------------------------------------------
+  // 2. Local request for output stage
+  //---------------------------------------------------------------------------
+  wire Ki_out;
+  th22x0 ki_gen(.a(Ki), .b(done_all), .z(Ki_out));
 
+  logic [5:0] ko_out;
+  ncl_reg_null rQ0(.d(m[0]),  .Ki(Ki_out), .rst(rst), .q(Po[0]), .Ko(ko_out[0]));
+  ncl_reg_null rQ1(.d(P[1]),  .Ki(Ki_out), .rst(rst), .q(Po[1]), .Ko(ko_out[1]));
+  ncl_reg_null rQ2(.d(P[2]),  .Ki(Ki_out), .rst(rst), .q(Po[2]), .Ko(ko_out[2]));
+  ncl_reg_null rQ3(.d(P[3]),  .Ki(Ki_out), .rst(rst), .q(Po[3]), .Ko(ko_out[3]));
+  ncl_reg_null rQ4(.d(P[4]),  .Ki(Ki_out), .rst(rst), .q(Po[4]), .Ko(ko_out[4]));
+  ncl_reg_null rQ5(.d(c6),    .Ki(Ki_out), .rst(rst), .q(Po[5]), .Ko(ko_out[5]));
+
+  assign dbg_Ko_out = ko_out;
+
+  assign dbg_Q_null = {~|Po[5],~|Po[4],~|Po[3],
+                       ~|Po[2],~|Po[1],~|Po[0]};
+
+  assign dbg_Q_data = { |Po[5], |Po[4], |Po[3],
+                        |Po[2], |Po[1], |Po[0]};
+  
   // completion tree to generate final Ko
-  wire ct10, ct11, ct12;
-  wire ct20;
-
-  th22x0 cstg1(.a(ko_out0), .b(ko_out1), .z(ct10));
-  th22x0 cstg2(.a(ko_out2), .b(ko_out3), .z(ct11));
-  th22x0 cstg3(.a(ct10),    .b(ct11),    .z(ct20));
-  th22x0 cstg4(.a(ko_out4), .b(ko_out5), .z(ct12));
-  th22x0 cstg5(.a(ct20),    .b(ct12),    .z(Ko));   // final acknowledge
+  wire ct0, ct1, ct2;
+  th22x0 cstg1(.a(ko_out[0]), .b(ko_out[1]), .z(ct0));
+  th22x0 cstg2(.a(ko_out[2]), .b(ko_out[3]), .z(ct1));
+  th22x0 cstg3(.a(ct0),       .b(ct1),       .z(ct2));
+  wire ct3;
+  th22x0 cstg4(.a(ko_out[4]), .b(ko_out[5]), .z(ct3));
+  th22x0 cstg5(.a(ct2),       .b(ct3),       .z(Ko));
 
   // unpack P to outputs
   assign Po0_rail1 = Po[0].rail1;
